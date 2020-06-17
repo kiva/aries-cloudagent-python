@@ -86,6 +86,14 @@ class CredDefIdMatchInfoSchema(Schema):
     )
 
 
+class GetWalletRecordSchema(Schema):
+    """Parameters to get records from wallet """
+    record_id = fields.List(
+        fields.Str(description="Wallet Record ID", example="RecordId"),
+        description="List of all record IDs that should be retrieved from wallet",
+    )
+
+
 def format_did_info(info: DIDInfo):
     """Serialize a DIDInfo object."""
     if info:
