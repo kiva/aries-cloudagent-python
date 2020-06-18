@@ -94,6 +94,14 @@ class GetWalletRecordSchema(Schema):
     )
 
 
+class WalletRecordSchema(Schema):
+    """Result Schema for Wallet Records"""
+    record_id = fields.List(
+        fields.Str(description="Wallet Record", example="Record"),
+        description="List of all records grab from a list of wallet record IDs",
+    )
+
+
 def format_did_info(info: DIDInfo):
     """Serialize a DIDInfo object."""
     if info:
@@ -355,6 +363,22 @@ async def wallet_set_tagging_policy(request: web.BaseRequest):
         raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     return web.json_response({})
+
+
+@docs(tags=["wallet"], summary="Set the tagging policy for a credential definition")
+@match_info_schema(WalletRecordSchema())
+@request_schema(GetWalletRecordSchema())
+async def get_wallet_records_by_id_list(request: web.BaseRequest):
+    """
+        Request handler for setting the tag policy associated with a cred def.
+
+        Args:
+            request: aiohttp request object
+
+        Returns:
+            An empty JSON response
+
+        """
 
 
 async def register(app: web.Application):
