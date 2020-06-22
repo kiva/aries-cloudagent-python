@@ -2,12 +2,14 @@
 
 import json
 import logging
-from typing import Sequence
+from typing import Sequence, Optional
 
 import indy.anoncreds
 import indy.did
 import indy.crypto
 import indy.wallet
+import indy.non_secrets
+
 from indy.error import IndyError, ErrorCode
 
 from ..indy.error import IndyErrorHandler
@@ -54,7 +56,7 @@ class IndyWallet(BaseWallet):
         self._handle = None
         self._key = config.get("key") or self.DEFAULT_KEY
         self._key_derivation_method = (
-            config.get("key_derivation_method") or self.DEFAULT_KEY_DERIVIATION
+                config.get("key_derivation_method") or self.DEFAULT_KEY_DERIVIATION
         )
         self._rekey = config.get("rekey")
         self._rekey_derivation_method = config.get("key_derivation_method")
@@ -292,7 +294,7 @@ class IndyWallet(BaseWallet):
             self._handle = None
 
     async def create_signing_key(
-        self, seed: str = None, metadata: dict = None
+            self, seed: str = None, metadata: dict = None
     ) -> KeyInfo:
         """
         Create a new public/private signing keypair.
@@ -422,7 +424,7 @@ class IndyWallet(BaseWallet):
             ) from x_indy
 
     async def create_local_did(
-        self, seed: str = None, did: str = None, metadata: dict = None
+            self, seed: str = None, did: str = None, metadata: dict = None
     ) -> DIDInfo:
         """
         Create and store a new local DID.
@@ -575,7 +577,7 @@ class IndyWallet(BaseWallet):
         return result
 
     async def verify_message(
-        self, message: bytes, signature: bytes, from_verkey: str
+            self, message: bytes, signature: bytes, from_verkey: str
     ) -> bool:
         """
         Verify a signature against the public key of the signer.
@@ -613,7 +615,7 @@ class IndyWallet(BaseWallet):
         return result
 
     async def pack_message(
-        self, message: str, to_verkeys: Sequence[str], from_verkey: str = None
+            self, message: str, to_verkeys: Sequence[str], from_verkey: str = None
     ) -> bytes:
         """
         Pack a message for one or more recipients.
@@ -685,10 +687,10 @@ class IndyWallet(BaseWallet):
         return json.loads(policy_json) if policy_json else None
 
     async def set_credential_definition_tag_policy(
-        self,
-        credential_definition_id: str,
-        taggables: Sequence[str] = None,
-        retroactive: bool = True,
+            self,
+            credential_definition_id: str,
+            taggables: Sequence[str] = None,
+            retroactive: bool = True,
     ):
         """
         Set the tag policy for a given credential definition ID.
@@ -712,6 +714,59 @@ class IndyWallet(BaseWallet):
                 json.dumps(taggables),
                 retroactive,
             )
+        except IndyError as x_indy:
+            raise IndyErrorHandler.wrap_error(
+                x_indy, "Wallet {} error".format(self.name), WalletError
+            ) from x_indy
+
+    async def get_wallet_record(self,
+                                type_: str,
+                                id_: str,
+                                options_json: str):
+        try:
+            wallet_record_json = await indy.non_secrets.get_wallet_record(
+                self.handle,
+                type_,
+                id_,
+                options_json
+            )
+
+        except IndyError as x_indy:
+            raise IndyErrorHandler.wrap_error(
+                x_indy, "Wallet {} error".format(self.name), WalletError
+            ) from x_indy
+
+        return json.loads(wallet_record_json) if wallet_record_json else None
+
+    async def set_wallet_record(self,
+                                type_: str,
+                                id_: str,
+                                value: str,
+                                tags_json: Optional[str]):
+        try:
+            await indy.non_secrets.add_wallet_record(
+                self.handle,
+                type_,
+                id_,
+                value,
+                tags_json
+            )
+
+        except IndyError as x_indy:
+            raise IndyErrorHandler.wrap_error(
+                x_indy, "Wallet {} error".format(self.name), WalletError
+            ) from x_indy
+
+    async def delete_wallet_record(self,
+                                   type_: str,
+                                   id_: str):
+        try:
+            await indy.non_secrets.delete_wallet_record(
+                self.handle,
+                type_,
+                id_,
+            )
+
         except IndyError as x_indy:
             raise IndyErrorHandler.wrap_error(
                 x_indy, "Wallet {} error".format(self.name), WalletError

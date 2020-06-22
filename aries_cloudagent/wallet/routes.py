@@ -378,7 +378,10 @@ async def get_wallet_records_by_id_list(request: web.BaseRequest):
         Returns:
             An empty JSON response
 
-        """
+    """
+
+
+
 
 
 async def register(app: web.Application):
