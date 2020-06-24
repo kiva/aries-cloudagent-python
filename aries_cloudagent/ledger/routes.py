@@ -173,6 +173,8 @@ async def get_did_verkey(request: web.BaseRequest):
     async with ledger:
         try:
             result = await ledger.get_key_for_did(did)
+            if not result:
+                raise web.HTTPNotFound(reason=f"DID {did} is not on the ledger")
         except LedgerError as err:
             raise web.HTTPBadRequest(reason=err.roll_up) from err
 
@@ -232,16 +234,20 @@ async def ledger_get_taa(request: web.BaseRequest):
             reason += ": missing wallet-type?"
         raise web.HTTPForbidden(reason=reason)
 
-    taa_info = await ledger.get_txn_author_agreement()
-    accepted = None
-    if taa_info["taa_required"]:
-        accept_record = await ledger.get_latest_txn_author_acceptance()
-        if accept_record:
-            accepted = {
-                "mechanism": accept_record["mechanism"],
-                "time": accept_record["time"],
-            }
-    taa_info["taa_accepted"] = accepted
+    async with ledger:
+        try:
+            taa_info = await ledger.get_txn_author_agreement()
+            accepted = None
+            if taa_info["taa_required"]:
+                accept_record = await ledger.get_latest_txn_author_acceptance()
+                if accept_record:
+                    accepted = {
+                        "mechanism": accept_record["mechanism"],
+                        "time": accept_record["time"],
+                    }
+            taa_info["taa_accepted"] = accepted
+        except LedgerError as err:
+            raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     return web.json_response({"result": taa_info})
 
@@ -268,18 +274,25 @@ async def ledger_accept_taa(request: web.BaseRequest):
         raise web.HTTPForbidden(reason=reason)
 
     accept_input = await request.json()
-    taa_info = await ledger.get_txn_author_agreement()
-    if not taa_info["taa_required"]:
-        raise web.HTTPBadRequest(reason=f"Ledger {ledger.pool_name} TAA not available")
-    taa_record = {
-        "version": accept_input["version"],
-        "text": accept_input["text"],
-        "digest": ledger.taa_digest(accept_input["version"], accept_input["text"]),
-    }
-    try:
-        await ledger.accept_txn_author_agreement(taa_record, accept_input["mechanism"])
-    except StorageError as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+    async with ledger:
+        try:
+            taa_info = await ledger.get_txn_author_agreement()
+            if not taa_info["taa_required"]:
+                raise web.HTTPBadRequest(
+                    reason=f"Ledger {ledger.pool_name} TAA not available"
+                )
+            taa_record = {
+                "version": accept_input["version"],
+                "text": accept_input["text"],
+                "digest": ledger.taa_digest(
+                    accept_input["version"], accept_input["text"]
+                ),
+            }
+            await ledger.accept_txn_author_agreement(
+                taa_record, accept_input["mechanism"]
+            )
+        except (LedgerError, StorageError) as err:
+            raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     return web.json_response({})
 
