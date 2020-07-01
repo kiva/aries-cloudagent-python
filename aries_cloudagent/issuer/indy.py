@@ -7,8 +7,11 @@ from typing import Sequence, Tuple
 import indy.anoncreds
 import indy.blob_storage
 from indy.error import AnoncredsRevocationRegistryFullError, IndyError, ErrorCode
-
+from ..utils.regex import find_attach_in_attribute
+from ..wallet.util import image_to_b64
+from ..wallet.indy import IndyWallet
 from ..messaging.util import encode
+from hashlib import sha256
 
 from .base import (
     BaseIssuer,
@@ -34,7 +37,7 @@ class IndyIssuer(BaseIssuer):
 
         """
         self.logger = logging.getLogger(__name__)
-        self.wallet = wallet
+        self.wallet : IndyWallet = wallet
 
     def make_schema_id(
         self, origin_did: str, schema_name: str, schema_version: str
@@ -198,8 +201,16 @@ class IndyIssuer(BaseIssuer):
                 )
 
             encoded_values[attribute] = {}
-            encoded_values[attribute]["raw"] = str(credential_value)
-            encoded_values[attribute]["encoded"] = encode(credential_value)
+
+            if find_attach_in_attribute(attribute) and bool(credential_value):
+                img_b64 = image_to_b64(credential_value)
+                img_sha256 = sha256(str(credential_value).encode()).digest()
+                await self.wallet.set_wallet_record('wallet', img_sha256, img_b64)
+                encoded_values[attribute]["raw"] = img_sha256
+                encoded_values[attribute]["encoded"] = encode(img_sha256)
+            else:
+                encoded_values[attribute]["raw"] = str(credential_value)
+                encoded_values[attribute]["encoded"] = encode(credential_value)
 
         tails_reader_handle = (
             await create_tails_reader(tails_file_path)
