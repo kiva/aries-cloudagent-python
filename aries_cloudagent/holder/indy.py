@@ -9,6 +9,7 @@ from typing import Sequence, Tuple, Union
 import indy.anoncreds
 from indy.error import ErrorCode, IndyError
 
+from aries_cloudagent.utils.regex import find_attach_in_attribute
 from ..indy import create_tails_reader
 from ..indy.error import IndyErrorHandler
 from ..storage.indy import IndyStorage
@@ -243,6 +244,8 @@ class IndyHolder(BaseHolder):
                 credentials = await fetch(reft, count - len(creds_dict))
                 for cred in credentials:
                     cred_id = cred["cred_info"]["referent"]
+                    if find_attach_in_attribute(cred_id):
+                        cred["cred_info"]["referent"] = await self.wallet.get_wallet_record('wallet', cred_id)
                     if cred_id not in creds_dict:
                         cred["presentation_referents"] = {reft}
                         creds_dict[cred_id] = cred
