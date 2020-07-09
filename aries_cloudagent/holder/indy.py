@@ -245,7 +245,9 @@ class IndyHolder(BaseHolder):
                 for cred in credentials:
                     cred_id = cred["cred_info"]["referent"]
                     if find_attach_in_attribute(cred_id):
-                        cred["cred_info"]["referent"] = await self.wallet.get_wallet_record('wallet', cred_id)
+                        cred["cred_info"][
+                            "referent"
+                        ] = await self.wallet.get_wallet_record("wallet", cred_id)
                     if cred_id not in creds_dict:
                         cred["presentation_referents"] = {reft}
                         creds_dict[cred_id] = cred
@@ -378,6 +380,24 @@ class IndyHolder(BaseHolder):
                 json.dumps(credential_definitions),
                 json.dumps(rev_states) if rev_states else "{}",
             )
+
+        presentation_dict = json.loads(presentation_json)
+
+        presentation_attributes = json.loads(
+            presentation_dict["requested_proof"]["revealed_attr_groups"]
+        )
+
+        wallet_record = {}
+
+        for req_attribute in presentation_attributes:
+            for value in presentation_attributes[req_attribute]["values"]:
+                if "~attach" in value:
+                    attach_hash = presentation_attributes[req_attribute]["values"][
+                        value
+                    ]["raw"]
+                    wallet_record[
+                        "attach_wallet"
+                    ] = await self.wallet.get_wallet_record("wallet", attach_hash)
 
         return presentation_json
 

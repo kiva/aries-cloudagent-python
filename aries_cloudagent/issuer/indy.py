@@ -37,7 +37,7 @@ class IndyIssuer(BaseIssuer):
 
         """
         self.logger = logging.getLogger(__name__)
-        self.wallet : IndyWallet = wallet
+        self.wallet: IndyWallet = wallet
 
     def make_schema_id(
         self, origin_did: str, schema_name: str, schema_version: str
@@ -205,7 +205,7 @@ class IndyIssuer(BaseIssuer):
             if find_attach_in_attribute(attribute) and bool(credential_value):
                 img_b64 = image_to_b64(credential_value)
                 img_sha256 = sha256(str(credential_value).encode()).digest()
-                await self.wallet.set_wallet_record('wallet', img_sha256, img_b64)
+                await self.wallet.set_wallet_record("wallet", img_sha256, img_b64)
                 encoded_values[attribute]["raw"] = img_sha256
                 encoded_values[attribute]["encoded"] = encode(img_sha256)
             else:
