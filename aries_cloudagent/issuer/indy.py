@@ -189,6 +189,9 @@ class IndyIssuer(BaseIssuer):
 
         encoded_values = {}
         schema_attributes = schema["attrNames"]
+
+        credentials_attach = {}
+
         for attribute in schema_attributes:
             # Ensure every attribute present in schema to be set.
             # Extraneous attribute names are ignored.
@@ -205,6 +208,7 @@ class IndyIssuer(BaseIssuer):
             if find_attach_in_attribute(attribute) and bool(credential_value):
                 img_b64 = image_to_b64(credential_value)
                 img_sha256 = sha256(str(credential_value).encode()).digest()
+                credentials_attach[img_sha256] = img_b64
                 await self.wallet.set_wallet_record("wallet", img_sha256, img_b64)
                 encoded_values[attribute]["raw"] = img_sha256
                 encoded_values[attribute]["encoded"] = encode(img_sha256)
@@ -242,6 +246,10 @@ class IndyIssuer(BaseIssuer):
             raise IndyErrorHandler.wrap_error(
                 error, "Error when issuing credential", IssuerError
             ) from error
+
+        if credentials_attach:
+            credential_json["credentials~attach"] = credentials_attach
+            logging.log(f"credential attach : {credential_json}")
 
         return credential_json, credential_revocation_id
 

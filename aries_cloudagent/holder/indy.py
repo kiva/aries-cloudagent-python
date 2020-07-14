@@ -383,21 +383,22 @@ class IndyHolder(BaseHolder):
 
         presentation_dict = json.loads(presentation_json)
 
-        presentation_attributes = json.loads(
-            presentation_dict["requested_proof"]["revealed_attr_groups"]
-        )
+        if presentation_dict:
+            presentation_attributes = json.loads(
+                presentation_dict["requested_proof"]["revealed_attr_groups"]
+            )
 
-        wallet_record = {}
+            wallet_record = {}
 
-        for req_attribute in presentation_attributes:
-            for value in presentation_attributes[req_attribute]["values"]:
-                if "~attach" in value:
-                    attach_hash = presentation_attributes[req_attribute]["values"][
-                        value
-                    ]["raw"]
-                    wallet_record[
-                        "attach_wallet"
-                    ] = await self.wallet.get_wallet_record("wallet", attach_hash)
+            for req_attribute in presentation_attributes:
+                for value in presentation_attributes[req_attribute]["values"]:
+                    if "~attach" in value:
+                        attach_hash = presentation_attributes[req_attribute]["values"][
+                            value
+                        ]["raw"]
+                        presentation_json[
+                            "presentations~attach"
+                        ] = await self.wallet.get_wallet_record("wallet", attach_hash)
 
         return presentation_json
 
