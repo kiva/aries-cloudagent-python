@@ -205,7 +205,7 @@ class IndyIssuer(BaseIssuer):
 
             encoded_values[attribute] = {}
 
-            if find_attach_in_attribute(attribute) and bool(credential_value):
+            if "~attach" in attribute and bool(credential_value):
                 img_b64 = image_to_b64(credential_value)
                 img_sha256 = sha256(str(credential_value).encode()).digest()
                 credentials_attach[img_sha256] = img_b64
