@@ -720,6 +720,27 @@ class IndyWallet(BaseWallet):
     '''
 
     async def get_wallet_record(self, type_: str, id_: str, options_json: str):
+        """
+        Get a wallet record from indy wallet.
+
+        Args:
+           type_: allows to separate different record types collections
+           id_: the id of record
+           options_json: //TODO: FIXME: Think about replacing by bitmask
+
+        Returns:
+            wallet record json:
+            {
+                id: "Some id",
+                type: "Some type", // present only if retrieveType set to true
+                value: "Some value", // present only if retrieveValue set to true
+                tags: <tags json>, // present only if retrieveTags set to true
+            }
+
+        Raises:
+            WalletError: If a libindy error occurs
+
+        """
         try:
             wallet_record_json = await indy.non_secrets.get_wallet_record(
                 self.handle, type_, id_, options_json
@@ -735,6 +756,20 @@ class IndyWallet(BaseWallet):
     async def set_wallet_record(
         self, type_: str, id_: str, value: str, tags_json: Optional[str]
     ):
+        """
+        Set a wallet record from indy wallet.
+
+        Args:
+            type_: allows to separate different record types collections
+            id_: the id of record
+            tags_json: tags for record
+
+        Returns:
+
+        Raises:
+             WalletError: If a libindy error occurs
+
+        """
         try:
             await indy.non_secrets.add_wallet_record(
                 self.handle, type_, id_, value, tags_json
@@ -746,6 +781,20 @@ class IndyWallet(BaseWallet):
             ) from x_indy
 
     async def delete_wallet_record(self, type_: str, id_: str):
+        """
+        Get a wallet record from indy wallet.
+
+        Args:
+            type_: allows to separate different record types collections
+            id_: the id of record
+
+        Returns:
+            None
+
+        Raises:
+            WalletError: If a libindy error occurs
+
+        """
         try:
             await indy.non_secrets.delete_wallet_record(
                 self.handle, type_, id_,

@@ -388,8 +388,6 @@ class IndyHolder(BaseHolder):
                 presentation_dict["requested_proof"]["revealed_attr_groups"]
             )
 
-            wallet_record = {}
-
             for req_attribute in presentation_attributes:
                 for value in presentation_attributes[req_attribute]["values"]:
                     if "~attach" in value:

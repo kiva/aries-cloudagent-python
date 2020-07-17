@@ -7,8 +7,7 @@ from typing import Sequence, Tuple
 import indy.anoncreds
 import indy.blob_storage
 from indy.error import AnoncredsRevocationRegistryFullError, IndyError, ErrorCode
-from ..utils.regex import find_attach_in_attribute
-from ..wallet.util import image_to_b64
+from ..wallet.util import str_to_b64
 from ..wallet.indy import IndyWallet
 from ..messaging.util import encode
 from hashlib import sha256
@@ -186,7 +185,9 @@ class IndyIssuer(BaseIssuer):
             A tuple of created credential and revocation id
 
         """
-
+        logging.getLogger("event")
+        logging.getLogger("event").setLevel(logging.DEBUG)
+        logging.getLogger("event").addHandler(logging.StreamHandler())
         encoded_values = {}
         schema_attributes = schema["attrNames"]
 
@@ -204,14 +205,24 @@ class IndyIssuer(BaseIssuer):
                 )
 
             encoded_values[attribute] = {}
+            # logging.getLogger("event")
+            # logging.getLogger("event").setLevel(logging.DEBUG)
+            # logging.getLogger("event").addHandler(logging.StreamHandler())
+            # logging.getLogger("event").debug(f"attribute:: '{attribute}' \n \n ")
 
-            if "~attach" in attribute and bool(credential_value):
-                img_b64 = image_to_b64(credential_value)
+            self.logger.error(f"attribute name: {attribute}")
+
+            if "~attach" in str(attribute):
+                img_b64 = str_to_b64(credential_value)
                 img_sha256 = sha256(str(credential_value).encode()).digest()
                 credentials_attach[img_sha256] = img_b64
-                await self.wallet.set_wallet_record("wallet", img_sha256, img_b64)
-                encoded_values[attribute]["raw"] = img_sha256
-                encoded_values[attribute]["encoded"] = encode(img_sha256)
+                await self.wallet.set_wallet_record(
+                    "wallet", img_sha256.decode(encoding="utf-8"), img_b64, None
+                )
+                encoded_values[attribute]["raw"] = img_sha256.decode(encoding="utf-8")
+                encoded_values[attribute]["encoded"] = encode(
+                    img_sha256.decode(encoding="utf-8")
+                )
             else:
                 encoded_values[attribute]["raw"] = str(credential_value)
                 encoded_values[attribute]["encoded"] = encode(credential_value)
