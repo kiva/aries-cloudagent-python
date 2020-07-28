@@ -32,4 +32,3 @@ ADD demo ./demo
 COPY demo/ngrok-wait.sh ngrok-wait.sh
 RUN chmod +x ./ngrok-wait.sh
 
-ENTRYPOINT ["./ngrok-wait.sh"]

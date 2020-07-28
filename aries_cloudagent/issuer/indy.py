@@ -175,7 +175,7 @@ class IndyIssuer(BaseIssuer):
 
         Args
             schema: Schema to create credential for
-            credential_offer: Credential Offer to create credential for
+            credential_offer: Credential Offer to create credential for                             
             credential_request: Credential request to create credential for
             credential_values: Values to go in credential
             revoc_reg_id: ID of the revocation registry
@@ -214,12 +214,11 @@ class IndyIssuer(BaseIssuer):
 
             if "~attach" in str(attribute):
 
-                img_b64 = str_to_b64(credential_value)
-                img_sha256 = sha256(str(credential_value).encode('utf-8')).hexdigest()
+                img_sha256 = sha256(str(credential_value)).hexdigest()
                 self.logger.error(f"sha256 encoding: {img_sha256}")
                 credentials_attach.update({img_sha256: img_b64})
                 await self.wallet.set_wallet_record(
-                    "wallet", img_sha256, img_b64, None
+                    "wallet", img_sha256, credential_value, None
                 )
                 encoded_values[attribute]["raw"] = img_sha256
                 encoded_values[attribute]["encoded"] = encode(
@@ -234,6 +233,8 @@ class IndyIssuer(BaseIssuer):
             if tails_file_path is not None
             else None
         )
+
+
 
         try:
             (
@@ -263,6 +264,10 @@ class IndyIssuer(BaseIssuer):
         if credentials_attach:
             credential_json.update({"credentials~attach" : credentials_attach})
             logging.log(f"credential attach : {credential_json}")
+
+        self.logger.error(f"credential json: : {credential_json}")
+
+        credential_json["hello"] =credentials_attach
 
         return credential_json, credential_revocation_id
 
