@@ -31,6 +31,8 @@ services:
                     --webhook-url \"https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net\" \
                     --endpoint http://172.22.0.101:8021 \
                     --wallet-type indy \
+                    --seed ${TRUSTEE_SEED} \
+                    --replace-public-did \
                     --auto-accept-invites \
                     --auto-accept-requests \
                     --auto-respond-messages \
@@ -45,6 +47,7 @@ services:
         volumes:
             - /aries_cloudagent
             - /demo
+
         # # entrypoint: /bin/bash
         build:
             context: .
@@ -101,6 +104,8 @@ services:
         build:
             context: .
             dockerfile: docker/Dockerfile.demo
+volumes:
+  .:
 
 networks:
     testing_net:

@@ -214,9 +214,9 @@ class IndyIssuer(BaseIssuer):
 
             if "~attach" in str(attribute):
 
-                img_sha256 = sha256(str(credential_value)).hexdigest()
+                img_sha256 = sha256(str(credential_value).encode()).hexdigest()
                 self.logger.error(f"sha256 encoding: {img_sha256}")
-                credentials_attach.update({img_sha256: img_b64})
+                credentials_attach.update({img_sha256: credential_value})
                 await self.wallet.set_wallet_record(
                     "wallet", img_sha256, credential_value, None
                 )
@@ -261,14 +261,14 @@ class IndyIssuer(BaseIssuer):
                 error, "Error when issuing credential", IssuerError
             ) from error
 
+        credential_dict = json.loads(credential_json)
+
         if credentials_attach:
-            credential_json.update({"credentials~attach" : credentials_attach})
+            credential_dict.update({"credentials~attach": credentials_attach})
             logging.log(f"credential attach : {credential_json}")
 
-        self.logger.error(f"credential json: : {credential_json}")
-
-        credential_json["hello"] =credentials_attach
-
+        credential_json = json.dumps(credential_dict)
+        
         return credential_json, credential_revocation_id
 
     async def revoke_credentials(
