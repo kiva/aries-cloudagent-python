@@ -9,6 +9,7 @@ from typing import Sequence, Tuple, Union
 import indy.anoncreds
 from indy.error import ErrorCode, IndyError
 
+from aries_cloudagent.utils.regex import find_attach_in_attribute
 from ..indy import create_tails_reader
 from ..indy.error import IndyErrorHandler
 from ..storage.indy import IndyStorage
@@ -229,33 +230,39 @@ class IndyHolder(BaseHolder):
                 )
             )
 
-            if not referents:
-                referents = (
-                    *presentation_request["requested_attributes"],
-                    *presentation_request["requested_predicates"],
-                )
-            creds_dict = OrderedDict()
 
-            try:
-                for reft in referents:
-                    # must move database cursor manually
-                    if start > 0:
-                        await fetch(reft, start)
-                    credentials = await fetch(reft, count - len(creds_dict))
-                    for cred in credentials:
-                        cred_id = cred["cred_info"]["referent"]
-                        if cred_id not in creds_dict:
-                            cred["presentation_referents"] = {reft}
-                            creds_dict[cred_id] = cred
-                        else:
-                            creds_dict[cred_id]["presentation_referents"].add(reft)
-                    if len(creds_dict) >= count:
-                        break
-            finally:
-                # Always close
-                await indy.anoncreds.prover_close_credentials_search_for_proof_req(
-                    search_handle
-                )
+        if not referents:
+            referents = (
+                *presentation_request["requested_attributes"],
+                *presentation_request["requested_predicates"],
+            )
+        creds_dict = OrderedDict()
+
+        try:
+            for reft in referents:
+                # must move database cursor manually
+                if start > 0:
+                    await fetch(reft, start)
+                credentials = await fetch(reft, count - len(creds_dict))
+                for cred in credentials:
+                    cred_id = cred["cred_info"]["referent"]
+                    if find_attach_in_attribute(cred_id):
+                        cred["cred_info"][
+                            "referent"
+                        ] = await self.wallet.get_wallet_record("wallet", cred_id)
+                    if cred_id not in creds_dict:
+                        cred["presentation_referents"] = {reft}
+                        creds_dict[cred_id] = cred
+                    else:
+                        creds_dict[cred_id]["presentation_referents"].add(reft)
+                if len(creds_dict) >= count:
+                    break
+        finally:
+            # Always close
+            await indy.anoncreds.prover_close_credentials_search_for_proof_req(
+                search_handle
+            )
+
 
         for cred in creds_dict.values():
             cred["presentation_referents"] = list(cred["presentation_referents"])
@@ -376,6 +383,23 @@ class IndyHolder(BaseHolder):
                 json.dumps(credential_definitions),
                 json.dumps(rev_states) if rev_states else "{}",
             )
+
+        presentation_dict = json.loads(presentation_json)
+
+        if presentation_dict:
+            presentation_attributes = json.loads(
+                presentation_dict["requested_proof"]["revealed_attr_groups"]
+            )
+
+            for req_attribute in presentation_attributes:
+                for value in presentation_attributes[req_attribute]["values"]:
+                    if "~attach" in value:
+                        attach_hash = presentation_attributes[req_attribute]["values"][
+                            value
+                        ]["raw"]
+                        presentation_json[
+                            "presentations~attach"
+                        ] = await self.wallet.get_wallet_record("wallet", attach_hash)
 
         return presentation_json
 

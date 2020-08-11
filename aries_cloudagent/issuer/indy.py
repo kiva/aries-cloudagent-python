@@ -7,8 +7,10 @@ from typing import Sequence, Tuple
 import indy.anoncreds
 import indy.blob_storage
 from indy.error import AnoncredsRevocationRegistryFullError, IndyError, ErrorCode
-
+from ..wallet.util import str_to_b64
+from ..wallet.indy import IndyWallet
 from ..messaging.util import encode
+from hashlib import sha256
 
 from .base import (
     BaseIssuer,
@@ -33,20 +35,20 @@ class IndyIssuer(BaseIssuer):
 
         """
         self.logger = logging.getLogger(__name__)
-        self.wallet = wallet
+        self.wallet: IndyWallet = wallet
 
     def make_schema_id(
-        self, origin_did: str, schema_name: str, schema_version: str
+            self, origin_did: str, schema_name: str, schema_version: str
     ) -> str:
         """Derive the ID for a schema."""
         return f"{origin_did}:2:{schema_name}:{schema_version}"
 
     async def create_and_store_schema(
-        self,
-        origin_did: str,
-        schema_name: str,
-        schema_version: str,
-        attribute_names: Sequence[str],
+            self,
+            origin_did: str,
+            schema_name: str,
+            schema_version: str,
+            attribute_names: Sequence[str],
     ) -> Tuple[str, str]:
         """
         Create a new credential schema and store it in the wallet.
@@ -69,7 +71,7 @@ class IndyIssuer(BaseIssuer):
         return (schema_id, schema_json)
 
     def make_credential_definition_id(
-        self, origin_did: str, schema: dict, signature_type: str = None, tag: str = None
+            self, origin_did: str, schema: dict, signature_type: str = None, tag: str = None
     ) -> str:
         """Derive the ID for a credential definition."""
         signature_type = signature_type or DEFAULT_SIGNATURE_TYPE
@@ -77,7 +79,7 @@ class IndyIssuer(BaseIssuer):
         return f"{origin_did}:3:{signature_type}:{str(schema['seqNo'])}:{tag}"
 
     async def credential_definition_in_wallet(
-        self, credential_definition_id: str
+            self, credential_definition_id: str
     ) -> bool:
         """
         Check whether a given credential definition ID is present in the wallet.
@@ -92,8 +94,8 @@ class IndyIssuer(BaseIssuer):
             return True
         except IndyError as error:
             if error.error_code not in (
-                ErrorCode.CommonInvalidStructure,
-                ErrorCode.WalletItemNotFound,
+                    ErrorCode.CommonInvalidStructure,
+                    ErrorCode.WalletItemNotFound,
             ):
                 raise IndyErrorHandler.wrap_error(
                     error,
@@ -104,12 +106,12 @@ class IndyIssuer(BaseIssuer):
         return False
 
     async def create_and_store_credential_definition(
-        self,
-        origin_did: str,
-        schema: dict,
-        signature_type: str = None,
-        tag: str = None,
-        support_revocation: bool = False,
+            self,
+            origin_did: str,
+            schema: dict,
+            signature_type: str = None,
+            tag: str = None,
+            support_revocation: bool = False,
     ) -> Tuple[str, str]:
         """
         Create a new credential definition and store it in the wallet.
@@ -159,20 +161,20 @@ class IndyIssuer(BaseIssuer):
         return credential_offer_json
 
     async def create_credential(
-        self,
-        schema: dict,
-        credential_offer: dict,
-        credential_request: dict,
-        credential_values: dict,
-        revoc_reg_id: str = None,
-        tails_file_path: str = None,
+            self,
+            schema: dict,
+            credential_offer: dict,
+            credential_request: dict,
+            credential_values: dict,
+            revoc_reg_id: str = None,
+            tails_file_path: str = None,
     ) -> Tuple[str, str]:
         """
         Create a credential.
 
         Args
             schema: Schema to create credential for
-            credential_offer: Credential Offer to create credential for
+            credential_offer: Credential Offer to create credential for                             
             credential_request: Credential request to create credential for
             credential_values: Values to go in credential
             revoc_reg_id: ID of the revocation registry
@@ -182,9 +184,14 @@ class IndyIssuer(BaseIssuer):
             A tuple of created credential and revocation id
 
         """
-
+        logging.getLogger("event")
+        logging.getLogger("event").setLevel(logging.DEBUG)
+        logging.getLogger("event").addHandler(logging.StreamHandler())
         encoded_values = {}
         schema_attributes = schema["attrNames"]
+
+        credentials_attach = {}
+
         for attribute in schema_attributes:
             # Ensure every attribute present in schema to be set.
             # Extraneous attribute names are ignored.
@@ -197,14 +204,36 @@ class IndyIssuer(BaseIssuer):
                 )
 
             encoded_values[attribute] = {}
-            encoded_values[attribute]["raw"] = str(credential_value)
-            encoded_values[attribute]["encoded"] = encode(credential_value)
+            # logging.getLogger("event")
+            # logging.getLogger("event").setLevel(logging.DEBUG)
+            # logging.getLogger("event").addHandler(logging.StreamHandler())
+            # logging.getLogger("event").debug(f"attribute:: '{attribute}' \n \n ")
+
+            self.logger.error(f"attribute name: {attribute}")
+
+            if "~attach" in str(attribute):
+
+                img_sha256 = sha256(str(credential_value).encode()).hexdigest()
+                self.logger.error(f"sha256 encoding: {img_sha256}")
+                credentials_attach.update({img_sha256: credential_value})
+                await self.wallet.set_wallet_record(
+                    "wallet", img_sha256, credential_value, None
+                )
+                encoded_values[attribute]["raw"] = img_sha256
+                encoded_values[attribute]["encoded"] = encode(
+                    img_sha256
+                )
+            else:
+                encoded_values[attribute]["raw"] = str(credential_value)
+                encoded_values[attribute]["encoded"] = encode(credential_value)
 
         tails_reader_handle = (
             await create_tails_reader(tails_file_path)
             if tails_file_path is not None
             else None
         )
+
+
 
         try:
             (
@@ -231,11 +260,20 @@ class IndyIssuer(BaseIssuer):
                 error, "Error when issuing credential", IssuerError
             ) from error
 
+        credential_dict = json.loads(credential_json)
+
+        if credentials_attach:
+            credential_dict.update({"credentials~attach": credentials_attach})
+            logging.log(f"credential attach : {credential_json}")
+
+        credential_json = json.dumps(credential_dict)
+        
         return credential_json, credential_revocation_id
 
     async def revoke_credentials(
         self, revoc_reg_id: str, tails_file_path: str, cred_revoc_ids: Sequence[str]
     ) -> (str, Sequence[str]):
+
         """
         Revoke a set of credentials in a revocation registry.
 
@@ -287,7 +325,7 @@ class IndyIssuer(BaseIssuer):
         return (result_json, failed_crids)
 
     async def merge_revocation_registry_deltas(
-        self, fro_delta: str, to_delta: str
+            self, fro_delta: str, to_delta: str
     ) -> str:
         """
         Merge revocation registry deltas.
@@ -333,7 +371,7 @@ class IndyIssuer(BaseIssuer):
         tails_writer = await create_tails_writer(tails_base_path)
 
         with IndyErrorHandler(
-            "Exception when creating revocation registry", IssuerError
+                "Exception when creating revocation registry", IssuerError
         ):
             (
                 revoc_reg_id,

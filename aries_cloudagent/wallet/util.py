@@ -57,3 +57,8 @@ def b58_to_bytes(val: str) -> bytes:
 def bytes_to_b58(val: bytes) -> str:
     """Convert a byte string to base 58."""
     return base58.b58encode(val).decode("ascii")
+
+
+def image_to_b64(filename: str) -> str:
+    """Convert an image to base 64."""
+    return base64.b64encode(open(filename, "rb").read())
