@@ -315,6 +315,7 @@ class OutboundTransportManager:
             self.outbound_event.clear()
             loop_time = get_timer()
             upd_buffer = []
+            retry_count = 0
 
             for queued in self.outbound_buffer:
                 if queued.state == QueuedOutboundMessage.STATE_DONE:
@@ -336,6 +337,8 @@ class OutboundTransportManager:
                     if queued.retry_at < loop_time:
                         queued.retry_at = None
                         deliver = True
+                    else:
+                        retry_count += 1
 
                 if deliver:
                     queued.state = QueuedOutboundMessage.STATE_DELIVER
@@ -387,8 +390,11 @@ class OutboundTransportManager:
 
             self.outbound_buffer = upd_buffer
             if self.outbound_buffer:
-                if not new_pending:
+                if (not new_pending) and (not retry_count):
                     await self.outbound_event.wait()
+                elif retry_count:
+                    # only retries - yield here so we don't hog resources
+                    await asyncio.sleep(0.05)
             else:
                 break
 
@@ -439,18 +445,34 @@ class OutboundTransportManager:
             queued.error = completed.exc_info
 
             if queued.retries:
-                LOGGER.error(
-                    ">>> Posting error: %s; Re-queue failed message ...",
-                    queued.endpoint,
-                )
+                if LOGGER.isEnabledFor(logging.DEBUG):
+                    LOGGER.error(
+                        (
+                            ">>> Error when posting to: %s; "
+                            "Error: %s; "
+                            "Payload: %s; Re-queue failed message ..."
+                        ),
+                        queued.endpoint,
+                        queued.error,
+                        queued.payload,
+                    )
+                else:
+                    LOGGER.error(
+                        (
+                            ">>> Error when posting to: %s; "
+                            "Error: %s; Re-queue failed message ..."
+                        ),
+                        queued.endpoint,
+                        queued.error,
+                    )
                 queued.retries -= 1
                 queued.state = QueuedOutboundMessage.STATE_RETRY
                 queued.retry_at = time.perf_counter() + 10
             else:
                 LOGGER.exception(
-                    "Outbound message could not be delivered", exc_info=queued.error,
+                    ">>> Outbound message failed to deliver, NOT Re-queued.",
+                    exc_info=queued.error,
                 )
-                LOGGER.error(">>> NOT Re-queued, state is DONE, failed to deliver msg.")
                 queued.state = QueuedOutboundMessage.STATE_DONE
         else:
             queued.error = None
