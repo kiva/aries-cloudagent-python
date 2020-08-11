@@ -400,6 +400,12 @@ class GeneralGroup(ArgumentGroup):
             help="Sets ledger to read-only to prevent updates.\
             Default: false.",
         )
+        parser.add_argument(
+            "--tails-server-base-url",
+            type=str,
+            metavar="<tails-server-base-url>",
+            help="Sets the base url of the tails server in use.",
+        )
 
     def get_settings(self, args: Namespace) -> dict:
         """Extract general settings."""
@@ -413,6 +419,8 @@ class GeneralGroup(ArgumentGroup):
             settings["additional_endpoints"] = args.endpoint[1:]
         if args.read_only_ledger:
             settings["read_only_ledger"] = True
+        if args.tails_server_base_url:
+            settings["tails_server_base_url"] = args.tails_server_base_url
         return settings
 
 
@@ -604,12 +612,12 @@ class ProtocolGroup(ArgumentGroup):
             settings["timing.enabled"] = True
         if args.timing_log:
             settings["timing.log_file"] = args.timing_log
+        # note that you can configure tracing without actually enabling it
+        # this is to allow message- or exchange-specific tracing (vs global)
+        settings["trace.target"] = "log"
+        settings["trace.tag"] = ""
         if args.trace:
-            # note that you can configure tracing without actually enabling it
-            # this is to allow message- or exchange-specific tracing (vs global)
             settings["trace.enabled"] = True
-            settings["trace.target"] = "log"
-            settings["trace.tag"] = ""
         if args.trace_target:
             settings["trace.target"] = args.trace_target
         if args.trace_tag:

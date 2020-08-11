@@ -170,12 +170,13 @@ class IndyHolder(BaseHolder):
                 self.wallet.handle, json.dumps(wql)
             )
 
-        if start > 0:
-            # must move database cursor manually
-            await fetch(start)
-        credentials = await fetch(count)
+            if start > 0:
+                # must move database cursor manually
+                await fetch(start)
+            credentials = await fetch(count)
 
-        await indy.anoncreds.prover_close_credentials_search(search_handle)
+            await indy.anoncreds.prover_close_credentials_search(search_handle)
+
         return credentials
 
     async def get_credentials_for_presentation_request_by_referent(
@@ -229,6 +230,7 @@ class IndyHolder(BaseHolder):
                 )
             )
 
+
         if not referents:
             referents = (
                 *presentation_request["requested_attributes"],
@@ -260,6 +262,7 @@ class IndyHolder(BaseHolder):
             await indy.anoncreds.prover_close_credentials_search_for_proof_req(
                 search_handle
             )
+
 
         for cred in creds_dict.values():
             cred["presentation_referents"] = list(cred["presentation_referents"])

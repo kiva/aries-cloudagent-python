@@ -34,8 +34,10 @@ from ....messaging.valid import (
 from ....storage.error import StorageError, StorageNotFoundError
 from ....indy.util import generate_pr_nonce
 
+from ...problem_report.v1_0 import internal_error
+
 from .manager import PresentationManager
-from .message_types import SPEC_URI
+from .message_types import ATTACH_DECO_IDS, PRESENTATION_REQUEST, SPEC_URI
 from .messages.inner.presentation_preview import (
     PresentationPreview,
     PresentationPreviewSchema,
@@ -47,7 +49,6 @@ from .models.presentation_exchange import (
     V10PresentationExchangeSchema,
 )
 
-from .message_types import ATTACH_DECO_IDS, PRESENTATION_REQUEST
 
 from ....utils.tracing import trace_event, get_timer, AdminAPIMessageTracingSchema
 
@@ -90,11 +91,11 @@ class V10PresentationExchangeListQueryStringSchema(Schema):
 
 
 class V10PresentationExchangeListSchema(Schema):
-    """Result schema for an Aries#0037 v1.0 presentation exchange query."""
+    """Result schema for an Aries RFC 37 v1.0 presentation exchange query."""
 
     results = fields.List(
         fields.Nested(V10PresentationExchangeSchema()),
-        description="Aries#0037 v1.0 presentation exchange records",
+        description="Aries RFC 37 v1.0 presentation exchange records",
     )
 
 
@@ -105,7 +106,7 @@ class V10PresentationProposalRequestSchema(AdminAPIMessageTracingSchema):
         description="Connection identifier", required=True, example=UUIDFour.EXAMPLE
     )
     comment = fields.Str(
-        description="Human-readable comment", required=False, default=""
+        description="Human-readable comment", required=False, allow_none=True
     )
     presentation_proposal = fields.Nested(PresentationPreviewSchema(), required=True)
     auto_present = fields.Boolean(
@@ -123,7 +124,7 @@ class V10PresentationProposalRequestSchema(AdminAPIMessageTracingSchema):
     )
 
 
-class IndyProofReqSpecRestrictionsSchema(Schema):
+class IndyProofReqPredSpecRestrictionsSchema(Schema):
     """Schema for restrictions in attr or pred specifier indy proof request."""
 
     schema_id = fields.String(
@@ -185,14 +186,63 @@ class IndyProofReqAttrSpecSchema(Schema):
     """Schema for attribute specification in indy proof request."""
 
     name = fields.String(
-        example="favouriteDrink", description="Attribute name", required=True
+        example="favouriteDrink", description="Attribute name", required=False
+    )
+    names = fields.List(
+        fields.String(example="age"),
+        description="Attribute name group",
+        required=False,
     )
     restrictions = fields.List(
-        fields.Nested(IndyProofReqSpecRestrictionsSchema()),
-        description="If present, credential must satisfy one of given restrictions",
+        fields.Dict(
+            keys=fields.Str(
+                validate=validate.Regexp(
+                    "^schema_id|"
+                    "schema_issuer_did|"
+                    "schema_name|"
+                    "schema_version|"
+                    "issuer_did|"
+                    "cred_def_id|"
+                    "attr::.+::value$"  # indy does not support attr::...::marker here
+                ),
+                example="cred_def_id",  # marshmallow/apispec v3.0 ignores
+            ),
+            values=fields.Str(example=INDY_CRED_DEF_ID["example"]),
+        ),
+        description=(
+            "If present, credential must satisfy one of given restrictions: specify "
+            "schema_id, schema_issuer_did, schema_name, schema_version, "
+            "issuer_did, cred_def_id, and/or attr::<attribute-name>::value "
+            "where <attribute-name> represents a credential attribute name"
+        ),
         required=False,
     )
     non_revoked = fields.Nested(IndyProofReqNonRevokedSchema(), required=False)
+
+    @validates_schema
+    def validate_fields(self, data, **kwargs):
+        """
+        Validate schema fields.
+
+        Data must have exactly one of name or names; if names then restrictions are
+        mandatory.
+
+        Args:
+            data: The data to validate
+
+        Raises:
+            ValidationError: if data has both or neither of name and names
+
+        """
+        if ("name" in data) == ("names" in data):
+            raise ValidationError(
+                "Attribute specification must have either name or names but not both"
+            )
+        restrictions = data.get("restrictions")
+        if ("names" in data) and (not restrictions or all(not r for r in restrictions)):
+            raise ValidationError(
+                "Attribute specification on 'names' must have non-empty restrictions"
+            )
 
 
 class IndyProofReqPredSpecSchema(Schema):
@@ -206,7 +256,7 @@ class IndyProofReqPredSpecSchema(Schema):
     )
     p_value = fields.Integer(description="Threshold value", required=True)
     restrictions = fields.List(
-        fields.Nested(IndyProofReqSpecRestrictionsSchema()),
+        fields.Nested(IndyProofReqPredSpecRestrictionsSchema()),
         description="If present, credential must satisfy one of given restrictions",
         required=False,
     )
@@ -248,7 +298,7 @@ class V10PresentationCreateRequestRequestSchema(AdminAPIMessageTracingSchema):
     """Request schema for creating a proof request free of any connection."""
 
     proof_request = fields.Nested(IndyProofRequestSchema(), required=True)
-    comment = fields.Str(required=False)
+    comment = fields.Str(required=False, allow_none=True)
     trace = fields.Bool(
         description="Whether to trace event (default false)",
         required=False,
@@ -418,16 +468,19 @@ async def presentation_exchange_retrieve(request: web.BaseRequest):
 
     """
     context = request.app["request_context"]
+    outbound_handler = request.app["outbound_message_router"]
+
     presentation_exchange_id = request.match_info["pres_ex_id"]
+    pres_ex_record = None
     try:
-        record = await V10PresentationExchange.retrieve_by_id(
+        pres_ex_record = await V10PresentationExchange.retrieve_by_id(
             context, presentation_exchange_id
         )
-        result = record.serialize()
+        result = pres_ex_record.serialize()
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err
     except (BaseModelError, StorageError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        await internal_error(err, web.HTTPBadRequest, pres_ex_record, outbound_handler)
 
     return web.json_response(result)
 
@@ -450,6 +503,7 @@ async def presentation_exchange_credentials_list(request: web.BaseRequest):
 
     """
     context = request.app["request_context"]
+    outbound_handler = request.app["outbound_message_router"]
 
     presentation_exchange_id = request.match_info["pres_ex_id"]
     referents = request.query.get("referent")
@@ -458,7 +512,7 @@ async def presentation_exchange_credentials_list(request: web.BaseRequest):
     )
 
     try:
-        presentation_exchange_record = await V10PresentationExchange.retrieve_by_id(
+        pres_ex_record = await V10PresentationExchange.retrieve_by_id(
             context, presentation_exchange_id
         )
     except StorageNotFoundError as err:
@@ -478,16 +532,16 @@ async def presentation_exchange_credentials_list(request: web.BaseRequest):
     holder: BaseHolder = await context.inject(BaseHolder)
     try:
         credentials = await holder.get_credentials_for_presentation_request_by_referent(
-            presentation_exchange_record.presentation_request,
+            pres_ex_record.presentation_request,
             presentation_referents,
             start,
             count,
             extra_query,
         )
     except HolderError as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        await internal_error(err, web.HTTPBadRequest, pres_ex_record, outbound_handler)
 
-    presentation_exchange_record.log_state(
+    pres_ex_record.log_state(
         context,
         "Retrieved presentation credentials",
         {
@@ -520,11 +574,13 @@ async def presentation_exchange_send_proposal(request: web.BaseRequest):
     outbound_handler = request.app["outbound_message_router"]
 
     body = await request.json()
+
     comment = body.get("comment")
     connection_id = body.get("connection_id")
 
-    # Aries#0037 calls it a proposal in the proposal struct but it's of type preview
+    # Aries RFC 37 calls it a proposal in the proposal struct but it's of type preview
     presentation_preview = body.get("presentation_proposal")
+    connection_record = None
     try:
         connection_record = await ConnectionRecord.retrieve_by_id(
             context, connection_id
@@ -533,8 +589,10 @@ async def presentation_exchange_send_proposal(request: web.BaseRequest):
             comment=comment,
             presentation_proposal=PresentationPreview.deserialize(presentation_preview),
         )
-    except (StorageNotFoundError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+    except (BaseModelError, StorageError) as err:
+        await internal_error(
+            err, web.HTTPBadRequest, connection_record, outbound_handler
+        )
 
     if not connection_record.is_ready:
         raise web.HTTPForbidden(reason=f"Connection {connection_id} not ready")
@@ -548,17 +606,21 @@ async def presentation_exchange_send_proposal(request: web.BaseRequest):
     )
 
     presentation_manager = PresentationManager(context)
+    pres_ex_record = None
     try:
-        (
-            presentation_exchange_record
-        ) = await presentation_manager.create_exchange_for_proposal(
+        pres_ex_record = await presentation_manager.create_exchange_for_proposal(
             connection_id=connection_id,
             presentation_proposal_message=presentation_proposal_message,
             auto_present=auto_present,
         )
-        result = presentation_exchange_record.serialize()
-    except (StorageError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        result = pres_ex_record.serialize()
+    except (BaseModelError, StorageError) as err:
+        await internal_error(
+            err,
+            web.HTTPBadRequest,
+            pres_ex_record or connection_record,
+            outbound_handler,
+        )
 
     await outbound_handler(presentation_proposal_message, connection_id=connection_id)
 
@@ -621,16 +683,16 @@ async def presentation_exchange_create_request(request: web.BaseRequest):
     )
 
     presentation_manager = PresentationManager(context)
+    pres_ex_record = None
     try:
-        (
-            presentation_exchange_record
-        ) = await presentation_manager.create_exchange_for_request(
+        (pres_ex_record) = await presentation_manager.create_exchange_for_request(
             connection_id=None,
             presentation_request_message=presentation_request_message,
         )
-        result = presentation_exchange_record.serialize()
-    except (StorageError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        result = pres_ex_record.serialize()
+    except (BaseModelError, StorageError) as err:
+        await internal_error(err, web.HTTPBadRequest, pres_ex_record, outbound_handler)
+
     await outbound_handler(presentation_request_message, connection_id=None)
 
     trace_event(
@@ -698,16 +760,20 @@ async def presentation_exchange_send_free_request(request: web.BaseRequest):
     )
 
     presentation_manager = PresentationManager(context)
+    pres_ex_record = None
     try:
-        (
-            presentation_exchange_record
-        ) = await presentation_manager.create_exchange_for_request(
+        (pres_ex_record) = await presentation_manager.create_exchange_for_request(
             connection_id=connection_id,
             presentation_request_message=presentation_request_message,
         )
-        result = presentation_exchange_record.serialize()
-    except (StorageError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        result = pres_ex_record.serialize()
+    except (BaseModelError, StorageError) as err:
+        await internal_error(
+            err,
+            web.HTTPBadRequest,
+            pres_ex_record or connection_record,
+            outbound_handler,
+        )
 
     await outbound_handler(presentation_request_message, connection_id=connection_id)
 
@@ -745,16 +811,14 @@ async def presentation_exchange_send_bound_request(request: web.BaseRequest):
     outbound_handler = request.app["outbound_message_router"]
 
     presentation_exchange_id = request.match_info["pres_ex_id"]
-    presentation_exchange_record = await V10PresentationExchange.retrieve_by_id(
+    pres_ex_record = await V10PresentationExchange.retrieve_by_id(
         context, presentation_exchange_id
     )
-    if presentation_exchange_record.state != (
-        V10PresentationExchange.STATE_PROPOSAL_RECEIVED
-    ):
+    if pres_ex_record.state != (V10PresentationExchange.STATE_PROPOSAL_RECEIVED):
         raise web.HTTPBadRequest(
             reason=(
                 f"Presentation exchange {presentation_exchange_id} "
-                f"in {presentation_exchange_record.state} state "
+                f"in {pres_ex_record.state} state "
                 f"(must be {V10PresentationExchange.STATE_PROPOSAL_RECEIVED})"
             )
         )
@@ -774,14 +838,17 @@ async def presentation_exchange_send_bound_request(request: web.BaseRequest):
     presentation_manager = PresentationManager(context)
     try:
         (
-            presentation_exchange_record,
+            pres_ex_record,
             presentation_request_message,
-        ) = await presentation_manager.create_bound_request(
-            presentation_exchange_record
+        ) = await presentation_manager.create_bound_request(pres_ex_record)
+        result = pres_ex_record.serialize()
+    except (BaseModelError, StorageError) as err:
+        await internal_error(
+            err,
+            web.HTTPBadRequest,
+            pres_ex_record or connection_record,
+            outbound_handler,
         )
-        result = presentation_exchange_record.serialize()
-    except (StorageError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     trace_msg = body.get("trace")
     presentation_request_message.assign_trace_decorator(
@@ -819,23 +886,21 @@ async def presentation_exchange_send_presentation(request: web.BaseRequest):
     context = request.app["request_context"]
     outbound_handler = request.app["outbound_message_router"]
     presentation_exchange_id = request.match_info["pres_ex_id"]
-    presentation_exchange_record = await V10PresentationExchange.retrieve_by_id(
+    pres_ex_record = await V10PresentationExchange.retrieve_by_id(
         context, presentation_exchange_id
     )
-    if presentation_exchange_record.state != (
-        V10PresentationExchange.STATE_REQUEST_RECEIVED
-    ):
+    if pres_ex_record.state != (V10PresentationExchange.STATE_REQUEST_RECEIVED):
         raise web.HTTPBadRequest(
             reason=(
                 f"Presentation exchange {presentation_exchange_id} "
-                f"in {presentation_exchange_record.state} state "
+                f"in {pres_ex_record.state} state "
                 f"(must be {V10PresentationExchange.STATE_REQUEST_RECEIVED})"
             )
         )
 
     body = await request.json()
 
-    connection_id = presentation_exchange_record.connection_id
+    connection_id = pres_ex_record.connection_id
     try:
         connection_record = await ConnectionRecord.retrieve_by_id(
             context, connection_id
@@ -849,10 +914,10 @@ async def presentation_exchange_send_presentation(request: web.BaseRequest):
     presentation_manager = PresentationManager(context)
     try:
         (
-            presentation_exchange_record,
+            pres_ex_record,
             presentation_message,
         ) = await presentation_manager.create_presentation(
-            presentation_exchange_record,
+            pres_ex_record,
             {
                 "self_attested_attributes": body.get("self_attested_attributes"),
                 "requested_attributes": body.get("requested_attributes"),
@@ -860,9 +925,14 @@ async def presentation_exchange_send_presentation(request: web.BaseRequest):
             },
             comment=body.get("comment"),
         )
-        result = presentation_exchange_record.serialize()
-    except (LedgerError, HolderError, BaseModelError, StorageError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        result = pres_ex_record.serialize()
+    except (BaseModelError, HolderError, LedgerError, StorageError) as err:
+        await internal_error(
+            err,
+            web.HTTPBadRequest,
+            pres_ex_record or connection_record,
+            outbound_handler,
+        )
 
     trace_msg = body.get("trace")
     presentation_message.assign_trace_decorator(
@@ -897,23 +967,23 @@ async def presentation_exchange_verify_presentation(request: web.BaseRequest):
     r_time = get_timer()
 
     context = request.app["request_context"]
+    outbound_handler = request.app["outbound_message_router"]
+
     presentation_exchange_id = request.match_info["pres_ex_id"]
 
-    presentation_exchange_record = await V10PresentationExchange.retrieve_by_id(
+    pres_ex_record = await V10PresentationExchange.retrieve_by_id(
         context, presentation_exchange_id
     )
-    if presentation_exchange_record.state != (
-        V10PresentationExchange.STATE_PRESENTATION_RECEIVED
-    ):
+    if pres_ex_record.state != (V10PresentationExchange.STATE_PRESENTATION_RECEIVED):
         raise web.HTTPBadRequest(
             reason=(
                 f"Presentation exchange {presentation_exchange_id} "
-                f"in {presentation_exchange_record.state} state "
+                f"in {pres_ex_record.state} state "
                 f"(must be {V10PresentationExchange.STATE_PRESENTATION_RECEIVED})"
             )
         )
 
-    connection_id = presentation_exchange_record.connection_id
+    connection_id = pres_ex_record.connection_id
 
     try:
         connection_record = await ConnectionRecord.retrieve_by_id(
@@ -927,16 +997,14 @@ async def presentation_exchange_verify_presentation(request: web.BaseRequest):
 
     presentation_manager = PresentationManager(context)
     try:
-        presentation_exchange_record = await presentation_manager.verify_presentation(
-            presentation_exchange_record
-        )
-        result = presentation_exchange_record.serialize()
+        pres_ex_record = await presentation_manager.verify_presentation(pres_ex_record)
+        result = pres_ex_record.serialize()
     except (LedgerError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        await internal_error(err, web.HTTPBadRequest, pres_ex_record, outbound_handler)
 
     trace_event(
         context.settings,
-        presentation_exchange_record,
+        pres_ex_record,
         outcome="presentation_exchange_verify.END",
         perf_counter=r_time,
     )
@@ -955,16 +1023,19 @@ async def presentation_exchange_remove(request: web.BaseRequest):
 
     """
     context = request.app["request_context"]
+    outbound_handler = request.app["outbound_message_router"]
+
     presentation_exchange_id = request.match_info["pres_ex_id"]
+    pres_ex_record = None
     try:
-        presentation_exchange_record = await V10PresentationExchange.retrieve_by_id(
+        pres_ex_record = await V10PresentationExchange.retrieve_by_id(
             context, presentation_exchange_id
         )
-        await presentation_exchange_record.delete_record(context)
+        await pres_ex_record.delete_record(context)
     except StorageNotFoundError as err:
-        raise web.HTTPNotFound(reason=err.roll_up) from err
+        await internal_error(err, web.HTTPNotFound, pres_ex_record, outbound_handler)
     except StorageError as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        await internal_error(err, web.HTTPBadRequest, pres_ex_record, outbound_handler)
 
     return web.json_response({})
 
