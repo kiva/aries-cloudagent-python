@@ -2,7 +2,7 @@ version: '3.5'
 
 
 services:
-    alice-agent:
+    faber-agent:
         
         ports:
             - "8021:8021"
@@ -21,14 +21,14 @@ services:
             "-c",
             "sleep 14;
                 aca-py start \
-                    --label alice \
+                    --label faber \
                     --inbound-transport http 172.22.0.101 8021 \
-                    --genesis-file \"demo/kiva/test/pool_transactions_genesis\"
+                    --genesis-file demo/kiva/test/pool_transactions_genesis \
                     --admin 172.22.0.101 8022  \
                     --admin-insecure-mode \
                     --outbound-transport http \
                     --log-level debug \
-                    --webhook-url \"https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net\" \
+                    --webhook-url https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net \
                     --endpoint http://172.22.0.101:8021 \
                     --wallet-type indy \
                     --seed ${TRUSTEE_SEED} \
@@ -54,7 +54,7 @@ services:
             dockerfile: docker/Dockerfile.demo
         
         
-    faber-agent:
+    alice-agent:
        
         
         networks:
@@ -76,14 +76,14 @@ services:
             "-c",
             "sleep 14;
                 aca-py start \
-                    --label faber \
+                    --label alice \
                     --inbound-transport http 172.22.0.100 8031 \
-                    --genesis-file \"demo/kiva/test/pool_transactions_genesis\"
+                    --genesis-file demo/kiva/test/pool_transactions_genesis \
                     --admin 172.22.0.100 8032  \
                     --admin-insecure-mode \
                     --outbound-transport http \
                     --log-level debug \
-                    --webhook-url \"https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net\" \
+                    --webhook-url https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net \
                     --endpoint http://172.22.0.100:8031 \
                     --wallet-type indy \
                     --auto-accept-invites \
