@@ -44,3 +44,15 @@ workflows:
  aries_cloudagent:
    jobs:
      - agent-build
+     - docker/publish:
+      requires:
+          - agent-build
+      filters: # only run for semver tagged versions
+          tags:
+              only: /^([0-9]+)\.([0-9]+)\.([0-9]+)/
+          branches:
+              ignore: /.*/
+      update-description: true
+      dockerfile: docker/Dockerfile.demo # TODO fix to be dockerfile.production
+      image: kivaprotocol/aries-cloudagent-python
+      tag: << pipeline.git.tag >>
