@@ -45,8 +45,8 @@ services:
         ]
 
         volumes:
-            - /aries_cloudagent
-            - /demo
+            - ./aries_cloudagent/:/aries_cloudagent
+            - ./demo/:/demo
 
         # # entrypoint: /bin/bash
         build:
@@ -98,8 +98,8 @@ services:
         ]
 
         volumes:
-            - /aries_cloudagent
-            - /demo
+            - ./aries_cloudagent/:/aries_cloudagent
+            - ./demo/:/demo
         # # entrypoint: /bin/bash
         build:
             context: .

@@ -184,9 +184,9 @@ class IndyIssuer(BaseIssuer):
             A tuple of created credential and revocation id
 
         """
-        logging.getLogger("event")
-        logging.getLogger("event").setLevel(logging.DEBUG)
-        logging.getLogger("event").addHandler(logging.StreamHandler())
+
+
+
         encoded_values = {}
         schema_attributes = schema["attrNames"]
 
@@ -204,13 +204,9 @@ class IndyIssuer(BaseIssuer):
                 )
 
             encoded_values[attribute] = {}
-            # logging.getLogger("event")
-            # logging.getLogger("event").setLevel(logging.DEBUG)
-            # logging.getLogger("event").addHandler(logging.StreamHandler())
-            # logging.getLogger("event").debug(f"attribute:: '{attribute}' \n \n ")
 
             self.logger.error(f"attribute name: {attribute}")
-
+            self.logger.debug(" CREATE CREDENTIAL INIT ")
             if "~attach" in str(attribute):
 
                 img_sha256 = sha256(str(credential_value).encode()).hexdigest()
@@ -232,8 +228,6 @@ class IndyIssuer(BaseIssuer):
             if tails_file_path is not None
             else None
         )
-
-
 
         try:
             (
@@ -264,14 +258,14 @@ class IndyIssuer(BaseIssuer):
 
         if credentials_attach:
             credential_dict.update({"credentials~attach": credentials_attach})
-            logging.log(f"credential attach : {credential_json}")
+            self.logger.debug(f"credential attach : {credential_json}")
 
         credential_json = json.dumps(credential_dict)
-        
+
         return credential_json, credential_revocation_id
 
     async def revoke_credentials(
-        self, revoc_reg_id: str, tails_file_path: str, cred_revoc_ids: Sequence[str]
+            self, revoc_reg_id: str, tails_file_path: str, cred_revoc_ids: Sequence[str]
     ) -> (str, Sequence[str]):
 
         """
@@ -344,13 +338,13 @@ class IndyIssuer(BaseIssuer):
         )
 
     async def create_and_store_revocation_registry(
-        self,
-        origin_did: str,
-        cred_def_id: str,
-        revoc_def_type: str,
-        tag: str,
-        max_cred_num: int,
-        tails_base_path: str,
+            self,
+            origin_did: str,
+            cred_def_id: str,
+            revoc_def_type: str,
+            tag: str,
+            max_cred_num: int,
+            tails_base_path: str,
     ) -> Tuple[str, str, str]:
         """
         Create a new revocation registry and store it in the wallet.
