@@ -211,17 +211,17 @@ class IndyIssuer(BaseIssuer):
 
                 img_sha256 = sha256(str(credential_value).encode()).hexdigest()
                 self.logger.error(f"sha256 encoding: {img_sha256}")
-                credentials_attach.update({img_sha256: credential_value})
-                await self.wallet.set_wallet_record(
-                    "wallet", img_sha256, credential_value, None
-                )
-                encoded_values[attribute]["raw"] = img_sha256
+                credentials_attach.update({attribute: {"value": credential_value, "sha256": img_sha256}})
+                encoded_values[attribute]["raw"] = str(img_sha256)
                 encoded_values[attribute]["encoded"] = encode(
                     img_sha256
                 )
             else:
                 encoded_values[attribute]["raw"] = str(credential_value)
                 encoded_values[attribute]["encoded"] = encode(credential_value)
+
+
+        self.logger.debug(f"ENCODED VALUES: {encoded_values}")
 
         tails_reader_handle = (
             await create_tails_reader(tails_file_path)
@@ -242,6 +242,7 @@ class IndyIssuer(BaseIssuer):
                 revoc_reg_id,
                 tails_reader_handle,
             )
+
         except AnoncredsRevocationRegistryFullError:
             self.logger.warning(
                 f"Revocation registry {revoc_reg_id} is full: cannot create credential"
@@ -259,6 +260,8 @@ class IndyIssuer(BaseIssuer):
         if credentials_attach:
             credential_dict.update({"credentials~attach": credentials_attach})
             self.logger.debug(f"credential attach : {credential_json}")
+
+        self.logger.debug(f"credential json {credential_json}")
 
         credential_json = json.dumps(credential_dict)
 

@@ -48,7 +48,7 @@ cred_def = {
 
 cred_def_request = requests.post("http://0.0.0.0:8022/credential-definitions", headers=headers_accept_alice, data=json.dumps(cred_def))
 
-time.sleep(30)
+time.sleep(5)
 
 cred_def_json = json.loads(cred_def_request.text)
 
@@ -79,7 +79,7 @@ credential_faber = {
       },
       {
         "name": "photo~attach",
-        "value": "martini"
+        "value": "martini" + str(randint(0,10001))
         },
     ]
   },

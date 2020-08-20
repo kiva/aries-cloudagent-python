@@ -101,6 +101,24 @@ class IndyHolder(BaseHolder):
             the ID of the stored credential
 
         """
+
+        self.logger.debug(f"holder credential data {credential_data}")
+
+        attachments = {}
+
+        if credential_data["credentials~attach"]:
+            attachments = credential_data["credentials~attach"]
+
+        for attachment in attachments:
+
+            value = attachment["value"]
+            attach_sha256 = attachment["sha256"]
+
+            await self.wallet.set_wallet_record(
+                "wallet", attach_sha256, value, None
+            )
+
+
         with IndyErrorHandler("Error when storing credential in wallet", HolderError):
             credential_id = await indy.anoncreds.prover_store_credential(
                 wallet_handle=self.wallet.handle,
