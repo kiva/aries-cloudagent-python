@@ -104,6 +104,22 @@ services:
         build:
             context: .
             dockerfile: docker/Dockerfile.demo
+
+    mediator-agent:
+        image: camparra/aries_dotnet_agent
+        environment:
+            - ASPNETCORE_URLS=http://172.22.0.103:8041 
+            - ASPNETCORE_ENVIRONMENT=Development
+            - ENDPOINT_HOST=http://172.22.0.103:8041 
+        working_dir: /app
+        ports:
+            - "8041:8041"
+        expose:
+            - "8041"
+        networks:
+            testing_net:
+                ipv4_address: 172.22.0.103
+        tty: true
 volumes:
   .:
 
