@@ -30,6 +30,7 @@ services:
                     --log-level debug \
                     --webhook-url https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net \
                     --endpoint http://172.22.0.101:8021 \
+                    --tails-server-base-url http://172.22.0.104:6543  \
                     --wallet-type indy \
                     --seed ${TRUSTEE_SEED} \
                     --replace-public-did \
@@ -85,6 +86,7 @@ services:
                     --log-level debug \
                     --webhook-url https://e7a1d16b6a8ec36fa3fd461350e61c8c.m.pipedream.net \
                     --endpoint http://172.22.0.100:8031 \
+                    --tails-server-base-url http://172.22.0.104:6543  \
                     --wallet-type indy \
                     --auto-accept-invites \
                     --auto-accept-requests \
@@ -120,8 +122,30 @@ services:
             testing_net:
                 ipv4_address: 172.22.0.103
         tty: true
-volumes:
-  .:
+ 
+
+    tails-server:
+        networks:
+                testing_net:
+                    ipv4_address: 172.22.0.104
+        image: kivaprotocol/tails-server:latest
+        container_name: tails-server
+        ports:
+            - 6543:6543
+        expose: 
+            - "6543"
+        networks:
+            - testing_net
+        env_file:
+            - .env
+        command: >
+            tails-server
+                --host 0.0.0.0
+                --port 6543
+                --storage-path /tmp/tails-files
+                --log-level INFO
+
+
 
 networks:
     testing_net:

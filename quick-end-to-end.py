@@ -42,15 +42,22 @@ broken_up_schema_id =  schema_id.split(':')
 issuer_did = broken_up_schema_id[0]
 
 cred_def = {
-  "tag": "default",
-  "schema_id": schema_id
+  "schema_id": schema_id,
+  "tag": 'default',
+  "revocation_registry_size": 0,
+  "support_revocation": True
 }
+
+
 
 cred_def_request = requests.post("http://0.0.0.0:8022/credential-definitions", headers=headers_accept_alice, data=json.dumps(cred_def))
 
 time.sleep(5)
 
+print(cred_def_request.text)
 cred_def_json = json.loads(cred_def_request.text)
+
+print(str("hello:") +str(cred_def_json))
 
 cred_def_id = cred_def_json["credential_definition_id"]
 
